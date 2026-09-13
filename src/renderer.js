@@ -34,7 +34,7 @@ if(window.vipClient?.updates){
 $('updateLater')?.addEventListener('click',()=>{updateUi.hidden=true;$('updateBanner')?.classList.add('hidden');});
 $('updateInstall')?.addEventListener('click',async()=>{try{await window.vipClient.updates.install();}catch(e){message(e.message||'Unable to install update.','error');}});
 
-const state = { base: VTC_API_BASE, username:'', token:'', active:null, lastJobActive:false, lastJobFinished:false, lastJobSignature:'', lastJobEventAt:0, startingJob:false, autoStartKey:'', completing:false, lastCancelAt:0, lastCompletedEventAt:0, pendingCompletion:null, completionRetryTimer:null, restCompletionTimer:null, lastRestJobSeenAt:0 };
+const state = { base: VTC_API_BASE, username:'', token:'', active:null, paused:[], lastJobActive:false, lastJobFinished:false, lastJobSignature:'', lastJobEventAt:0, startingJob:false, switchingJob:false, autoStartKey:'', completing:false, lastCancelAt:0, lastCompletedEventAt:0, pendingCompletion:null, completionRetryTimer:null, restCompletionTimer:null, lastRestJobSeenAt:0 };
 
 function message(text, type=''){ $('msg').textContent=text; $('msg').className='message '+type; if($('clusterStatusText')) $('clusterStatusText').textContent=text; }
 function loginMessage(text,type=''){ $('loginMsg').textContent=text; $('loginMsg').className='message '+type; }
@@ -62,10 +62,98 @@ function showActive(a){
   $('distance').textContent='—';
   if(updateUi.state) renderUpdateState(updateUi.state);
 }
+function jobKey(t){
+  return [t.origin||'',t.destination||'',t.cargo||'',t.truck||'',t.trailer||'',t.jobStartingTime||'',t.plannedDistanceKm??''].join('|');
+}
+function deliveryMatchesJob(d,key){
+  if(!d) return false;
+  if(d.job_signature && d.job_signature===key) return true;
+  const dKey=[d.origin||'',d.destination||'',d.cargo||'',d.truck||'',d.trailer||'',d.job_starting_time||'',d.planned_distance_km??''].join('|');
+  return dKey===key;
+}
+function renderPausedDeliveries(){
+  const wrap=$('pausedCard'), list=$('pausedList'), count=$('pausedCount');
+  if(!wrap||!list) return;
+  const rows=Array.isArray(state.paused)?state.paused:[];
+  if(count) count.textContent=String(rows.length);
+  if(!rows.length){ wrap.classList.add('hidden'); list.innerHTML=''; return; }
+  wrap.classList.remove('hidden');
+  list.innerHTML=rows.map(d=>{
+    const route=`${d.origin||'Unknown'} → ${d.destination||'Unknown'}`;
+    const km=Number(d.start_km||0).toLocaleString();
+    return `<div class="paused-row"><div><b>${route}</b><span>${d.cargo||'Cargo'} · Start ${km} KM</span></div><button class="paused-resume" data-delivery-id="${String(d.id).replace(/"/g,'&quot;')}">RESUME</button></div>`;
+  }).join('');
+}
+async function pauseDelivery(id, silent=false, pauseKm=null){
+  if(!id) return false;
+  try{
+    const d=await api('/api/deliveries',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'PAUSE',id,pause_km:pauseKm==null?null:Math.round(Number(pauseKm))})});
+    if(state.active && String(state.active.id)===String(id)) state.active=null;
+    if(!silent) message('Delivery paused. You can resume it when you return to that ETS2/ATS job.','ok');
+    return d.delivery||true;
+  }catch(e){
+    if(!/not found|already paused|already completed/i.test(e.message)) throw e;
+    return true;
+  }
+}
+async function resumeDelivery(id, silent=false, resumeKm=null){
+  if(!id) return false;
+  try{
+    if(state.active && String(state.active.id)!==String(id)){
+      await pauseDelivery(state.active.id,true,telemetry.latest?.odometerKm);
+    }
+    const d=await api('/api/deliveries',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'RESUME',id,resume_km:resumeKm==null?null:Math.round(Number(resumeKm))})});
+    showActive(d.delivery);
+    if(!silent) message('Previous delivery resumed. Your original starting KM has been preserved.','ok');
+    await refresh();
+    return true;
+  }catch(e){
+    message(`Unable to resume delivery: ${e.message}`,'error');
+    await refresh();
+    return false;
+  }
+}
+async function switchToTelemetryJob(t,key){
+  if(state.switchingJob||!state.username||!t.jobActive) return false;
+  state.switchingJob=true;
+  try{
+    const current=state.active;
+    if(current && deliveryMatchesJob(current,key)) return true;
+    if(current){
+      await pauseDelivery(current.id,true,t.odometerKm);
+      $('activeCard').classList.add('hidden');
+      $('activeEnd').textContent='—'; $('distance').textContent='—';
+    }
+    await refresh();
+    const pausedMatch=state.paused.find(d=>deliveryMatchesJob(d,key));
+    if(pausedMatch){
+      await resumeDelivery(pausedMatch.id,true,t.odometerKm);
+      message(`Resumed previous delivery: ${pausedMatch.origin} → ${pausedMatch.destination}. Drive safely.`,'ok');
+      return true;
+    }
+    if(t.odometerKm==null || !t.origin || !t.destination || !t.cargo) return false;
+    const startKm=Math.round(Number(t.odometerKm));
+    const body={action:'START',truckersmp_username:state.username,delivery_date:new Date().toISOString().slice(0,10),origin:String(t.origin),destination:String(t.destination),cargo:String(t.cargo),truck:String(t.truck||''),trailer:String(t.trailer||''),start_km:startKm,job_signature:key};
+    const d=await api('/api/deliveries',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    state.autoStartKey=key;
+    showActive(d.delivery);
+    message(`New delivery started automatically at ${startKm.toLocaleString()} KM. Drive safely.`,'ok');
+    await refresh();
+    return true;
+  }catch(e){
+    message(`Automatic delivery switch failed: ${e.message} — retrying…`,'error');
+    await refresh();
+    return false;
+  }finally{
+    state.switchingJob=false;
+  }
+}
 async function refresh(){
   if(!state.username||!state.token) return;
   try{
     const d=await api('/api/deliveries?active='+encodeURIComponent(state.username));
+    state.paused=Array.isArray(d.paused)?d.paused:[];
+    renderPausedDeliveries();
     if(d.active) showActive(d.active);
     else { state.active=null; $('activeCard').classList.add('hidden'); $('clusterRoute').textContent='No active delivery'; $('clusterCargo').textContent='Waiting for TruckTel job…'; }
   }catch(e){ if(/login required|invalid/i.test(e.message)){ await logout(false); } else message(e.message,'error'); }
@@ -143,11 +231,18 @@ $('resetConfirm').addEventListener('keydown',e=>{if(e.key==='Enter')$('resetPass
 
 async function logout(callServer=true){
   if(callServer&&state.token){try{await api('/api/driver-auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'logout'})});}catch{}}
-  clearTimeout(state.completionRetryTimer); state.completionRetryTimer=null; clearTimeout(state.restCompletionTimer); state.restCompletionTimer=null; state.pendingCompletion=null; state.lastRestJobSeenAt=0; state.token=''; state.username=''; state.active=null;
+  clearTimeout(state.completionRetryTimer); state.completionRetryTimer=null; clearTimeout(state.restCompletionTimer); state.restCompletionTimer=null; state.pendingCompletion=null; state.lastRestJobSeenAt=0; state.token=''; state.username=''; state.active=null; state.paused=[]; renderPausedDeliveries();
   await storeToken('');
   $('connection').textContent='NOT CONNECTED'; $('appContent').classList.add('hidden'); $('loginCard').classList.remove('hidden'); $('username').value=''; $('password').value=''; $('activeCard').classList.add('hidden'); loginMessage('You have been logged out.');
 }
 $('logout').onclick=()=>logout(true);
+$('pausedList')?.addEventListener('click',async e=>{
+  const btn=e.target.closest('.paused-resume');
+  if(!btn||!btn.dataset.deliveryId) return;
+  btn.disabled=true;
+  await resumeDelivery(btn.dataset.deliveryId);
+  btn.disabled=false;
+});
 
 async function cancelActiveDelivery(){
   if(!state.active||state.completing)return;
@@ -358,7 +453,7 @@ async function renderTelemetry(t){
   const route=[t.origin,t.destination].filter(Boolean).join(' → ');
   const cargo=t.cargo?` · ${t.cargo}`:'';
   $('centerRoute').textContent=t.connected?(route?`${route}${cargo}`:`Connected to ${t.game || 'Truck Simulator'} — waiting for a job…`):(t.adapterStatus?.reason || 'Waiting for ETS2 or ATS telemetry…');
-  const trip=state.active && t.odometerKm!=null ? Math.max(0,Number(t.odometerKm)-Number(state.active.start_km)) : null;
+  const trip=state.active && t.odometerKm!=null ? Math.max(0,Number(state.active.distance_km||0)+Number(t.odometerKm)-Number(state.active.segment_start_km ?? state.active.start_km)) : null;
   $('centerTrip').innerHTML=`TRIP <b>${trip==null?'—':trip.toFixed(3)+' KM'}</b>`;
   if(state.active){ $('clusterRoute').textContent=`${state.active.origin} → ${state.active.destination}`; $('clusterCargo').textContent=`${state.active.truckersmp_username} · ${state.active.cargo}`; } else { $('clusterRoute').textContent=route||'No active delivery'; $('clusterCargo').textContent=t.cargo||'Waiting for TruckTel job…'; }
   if($('telemetryDebug')) { const wsState=t.eventStreamState || (t.eventStreamConnected?'CONNECTED':'DISCONNECTED'); const wsDetail=t.eventStreamError || t.eventStreamClose || ''; $('telemetryDebug').textContent=`TruckTel :8080 | job=${t.jobActive?'ACTIVE':'NONE'} | event=${t.jobEvent||'—'} | events=WS ${wsState}${wsDetail?` (${wsDetail})`:''} | attempts=${t.eventStreamAttempts||0} | source=${t.jobSource||t.source||'—'} | mode=AUTO`; }
@@ -369,19 +464,18 @@ async function renderTelemetry(t){
     const end=Number(t.odometerKm);
     if(end>Number(state.active.start_km)){
       $('activeEnd').textContent=end.toLocaleString()+' KM';
-      $('distance').textContent=(end-Number(state.active.start_km)).toLocaleString()+' KM';
+      $('distance').textContent=(Number(state.active.distance_km||0)+Math.max(0,end-Number(state.active.segment_start_km ?? state.active.start_km))).toLocaleString()+' KM';
     }
   }
 
-  const jobSignature=[t.origin,t.destination,t.cargo,t.truck,t.trailer,t.jobStartingTime,t.plannedDistanceKm,t.jobEvent].join('|');
+  const jobSignature=jobKey(t);
   const eventStarted=t.jobEvent==='job-started' && Number(t.jobEventAt||0)>Number(state.lastJobEventAt||0);
   const jobStarted=eventStarted || t.jobEvent==='job-started' || (Boolean(t.jobActive) && (!state.lastJobActive || (jobSignature && jobSignature!==state.lastJobSignature))) || (Boolean(t.jobActive) && !state.active);
   const jobCancelled=Boolean(t.jobCancelled||t.jobEvent==='job-cancelled');
   // Only TruckTel's explicit job.delivered event is allowed to complete a delivery.
-  // A generic job-finished/disappeared state must never create a KM record.
   const deliveryEventAt=Number(t.jobEventAt||0);
   const jobFinished=Boolean(t.jobDelivered||t.jobEvent==='job-delivered') && deliveryEventAt>Number(state.lastCompletedEventAt||0);
-  if(jobStarted) message(`${t.game || 'Truck Simulator'} job detected — starting delivery automatically…`,'ok');
+  if(jobStarted) message(`${t.game || 'Truck Simulator'} job detected — checking active/paused deliveries…`,'ok');
 
   if(jobCancelled && state.active){
     message(`${t.game || 'Truck Simulator'} job cancelled — removing active delivery…`,'ok');
@@ -391,28 +485,12 @@ async function renderTelemetry(t){
     return;
   }
 
-  if(t.connected && t.jobActive && !state.active && !state.startingJob && state.username && t.odometerKm!=null){
-    const autoKey=[t.jobStartingTime||'',t.origin,t.destination,t.cargo,t.truck,t.trailer,t.plannedDistanceKm].join('|');
-    if(autoKey!==state.autoStartKey){
-      const startKm=Math.round(Number(t.odometerKm));
-      const body={action:'START',truckersmp_username:state.username,delivery_date:new Date().toISOString().slice(0,10),origin:String(t.origin||''),destination:String(t.destination||''),cargo:String(t.cargo||''),truck:String(t.truck||''),trailer:String(t.trailer||''),start_km:startKm};
-      if(!body.origin||!body.destination||!body.cargo){ message(`${t.game || 'Truck Simulator'} job detected — waiting for complete TruckTel job data…`,'error'); }
-      else{
-        state.startingJob=true;
-        try{
-          const d=await api('/api/deliveries',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-          state.autoStartKey=autoKey; showActive(d.delivery);
-          message(`Delivery started automatically at ${startKm.toLocaleString()} KM. Drive safely.`,'ok');
-          // If TruckTel emitted job.delivered just before the START request
-          // finished, don't lose that event. Complete the just-created active
-          // delivery from the event distance/odometer.
-          if ((t.jobDelivered || t.jobEvent==='job-delivered') && Number(t.jobEventAt||0)>Number(state.lastCompletedEventAt||0)) {
-            scheduleCompletionFromTelemetry(t);
-          }
-        }catch(e){ message(`Automatic delivery start failed: ${e.message} — retrying…`,'error'); }
-        finally{state.startingJob=false;}
-      }
-    }
+  // A changed TruckTel job is a job switch, not an automatic cancellation.
+  // Pause the previous delivery and either resume a matching paused delivery
+  // or create a new delivery for the new job.
+  if(t.connected && t.jobActive && state.username && !state.startingJob && !state.completing && !state.switchingJob &&
+     (!state.active || !deliveryMatchesJob(state.active,jobSignature))){
+    await switchToTelemetryJob(t,jobSignature);
   }
 
   if(jobFinished && state.active){
