@@ -2,6 +2,12 @@ const VTC_API_BASE = 'https://viplogisticstransportvtc.vercel.app';
 const $ = id => document.getElementById(id);
 
 const updateUi = { state:null, hidden:false };
+
+// Keep the footer version in sync with the actual installed Electron app version.
+window.vipClient?.updates?.getState?.().then(u => {
+  const el = $('appVersion');
+  if (el && u?.currentVersion) el.textContent = `v${u.currentVersion}`;
+}).catch(() => {});
 function renderUpdateState(u){
   if(!u || !window.vipClient?.updates) return;
   updateUi.state=u;
