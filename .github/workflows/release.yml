@@ -38,6 +38,16 @@ jobs:
             throw "ERROR: package.json version $packageVersion does not match tag $tagVersion"
           }
 
+      - name: Create draft GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${env:GITHUB_REF_NAME}" `
+            --draft `
+            --title "V.I.P LOGISTICS TRANSPORT DELIVERY APP ${env:GITHUB_REF_NAME}" `
+            --notes "Automated Windows release."
+
       - name: Build and publish Windows release
         run: npx electron-builder --win nsis --publish always
         env:
