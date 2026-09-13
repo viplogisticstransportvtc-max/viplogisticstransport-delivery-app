@@ -81,7 +81,7 @@ function renderPausedDeliveries(){
   list.innerHTML=rows.map(d=>{
     const route=`${d.origin||'Unknown'} → ${d.destination||'Unknown'}`;
     const km=Number(d.start_km||0).toLocaleString();
-    return `<div class="paused-row"><div><b>${route}</b><span>${d.cargo||'Cargo'} · Start ${km} KM</span></div><button class="paused-resume" data-delivery-id="${String(d.id).replace(/"/g,'&quot;')}">RESUME</button></div>`;
+    return `<div class="paused-row"><div><b>${route}</b><span>${d.cargo||'Cargo'} · Start ${km} KM</span></div></div>`;
   }).join('');
 }
 async function pauseDelivery(id, silent=false, pauseKm=null){
@@ -236,13 +236,6 @@ async function logout(callServer=true){
   $('connection').textContent='NOT CONNECTED'; $('appContent').classList.add('hidden'); $('loginCard').classList.remove('hidden'); $('username').value=''; $('password').value=''; $('activeCard').classList.add('hidden'); loginMessage('You have been logged out.');
 }
 $('logout').onclick=()=>logout(true);
-$('pausedList')?.addEventListener('click',async e=>{
-  const btn=e.target.closest('.paused-resume');
-  if(!btn||!btn.dataset.deliveryId) return;
-  btn.disabled=true;
-  await resumeDelivery(btn.dataset.deliveryId);
-  btn.disabled=false;
-});
 
 async function cancelActiveDelivery(){
   if(!state.active||state.completing)return;
