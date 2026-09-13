@@ -42,7 +42,7 @@
     "publish": {
       "provider": "github",
       "owner": "viplogisticstransportvtc-max",
-      "repo": "viplog"
+      "repo": "viplogisticstransport-delivery-app"
     }
   },
   "dependencies": {
