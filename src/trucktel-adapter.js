@@ -130,6 +130,27 @@ async function readTelemetry() {
   const gear = num(gearRaw);
   const fuel = num(first(truck, ['truck.fuel.amount', 'fuel.amount']) ?? first(truckFlat, ['truck.fuel.amount']));
   const capacity = num(first(truck, ['truck.fuel.capacity', 'fuel.capacity']) ?? first(truckFlat, ['truck.fuel.capacity']));
+  const bool = v => {
+    if (v === true) return true;
+    if (v === false || v == null || v === '') return false;
+    const n = Number(unwrap(v));
+    if (Number.isFinite(n)) return n !== 0;
+    return ['true','on','active','yes'].includes(String(unwrap(v)).trim().toLowerCase());
+  };
+  const light = paths => bool(first(truck, paths) ?? first(truckFlat, paths));
+  // TruckTel exposes SCS telemetry channels using the exact `truck.light.*`
+  // names below. Use the actual lamp state for blinkers, not only the switch
+  // state, so the dashboard follows the visible blinking phase.
+  const indicators = {
+    left: light(['truck.light.lblinker','truck.blinkerLeftOn','truck.blinkerLeftActive']),
+    right: light(['truck.light.rblinker','truck.blinkerRightOn','truck.blinkerRightActive']),
+    hazard: light(['truck.hazard.warning','truck.hazardWarningLights']),
+    parking: light(['truck.light.parking','truck.lightsParkingOn']),
+    lowBeam: light(['truck.light.beam.low','truck.lightsBeamLowOn']),
+    highBeam: light(['truck.light.beam.high','truck.lightsBeamHighOn']),
+    brake: light(['truck.light.brake','truck.lightsBrakeOn']),
+    beacon: light(['truck.light.beacon','truck.lightsBeaconOn'])
+  };
   const trailer = text(first(truck, [
     'trailer.0.body.type', 'trailer.0.brand', 'trailer.0.id',
     'trailer.0.chain.type'
@@ -174,7 +195,9 @@ async function readTelemetry() {
     gear,
     odometerKm: odo,
     fuelLiters: fuel,
+    fuelCapacityLiters: capacity,
     fuelPct: fuel != null && capacity ? fuel / capacity * 100 : null,
+    indicators,
     origin,
     destination,
     cargo,

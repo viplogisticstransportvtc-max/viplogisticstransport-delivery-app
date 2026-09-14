@@ -439,7 +439,32 @@ async function renderTelemetry(t){
   if($('speedStatus')) $('speedStatus').textContent=displaySpeed<1?'PARKED':displaySpeed<5?'CRAWLING':displaySpeed>100?'HIGH SPEED':'CRUISING';
   if($('rpmStatus')) $('rpmStatus').textContent=displayRpm<700?'IDLE':displayRpm>6000?'REDLINE':'RUNNING';
   $('telemetrySpeed').textContent=t.connected?Math.round(speed)+' KM/H':'—';
-  $('telemetryFuel').textContent=t.fuelLiters==null?'—':Number(t.fuelLiters).toFixed(0)+' L';
+  const ind=t.indicators||{};
+  const setIndicator=(id,on)=>{const el=$(id);if(!el)return;el.classList.toggle('on',Boolean(on));el.classList.toggle('offline',!t.connected);};
+  setIndicator('indicatorLeft',ind.left);
+  setIndicator('indicatorRight',ind.right);
+  setIndicator('indicatorHazard',ind.hazard);
+  setIndicator('indicatorParking',ind.parking);
+  setIndicator('indicatorLow',ind.lowBeam);
+  setIndicator('indicatorHigh',ind.highBeam);
+  setIndicator('indicatorBrake',ind.brake);
+  setIndicator('indicatorBeacon',ind.beacon);
+  const fuelLiters=t.fuelLiters==null?null:Number(t.fuelLiters);
+  const fuelCapacity=t.fuelCapacityLiters==null?null:Number(t.fuelCapacityLiters);
+  const fuelPct=t.fuelPct==null?(fuelLiters!=null && fuelCapacity>0 ? (fuelLiters/fuelCapacity)*100 : null):Number(t.fuelPct);
+  const safeFuelPct=fuelPct==null?null:Math.max(0,Math.min(100,fuelPct));
+  $('telemetryFuel').textContent=fuelLiters==null?'—':fuelLiters.toFixed(0)+' L';
+  $('telemetryFuelPct').textContent=safeFuelPct==null?'—':safeFuelPct.toFixed(0)+'%';
+  $('telemetryFuelCapacity').textContent=fuelCapacity==null?'—':fuelCapacity.toFixed(0)+' L MAX';
+  const fuelBar=$('fuelBarFill');
+  if(fuelBar){
+    fuelBar.style.width=safeFuelPct==null?'0%':safeFuelPct+'%';
+    const fuelColor=safeFuelPct==null?'#e50914':safeFuelPct<=15?'#ef4444':safeFuelPct<=30?'#f59e0b':safeFuelPct>=75?'#22c55e':'#e50914';
+    fuelBar.style.background=safeFuelPct==null?'#e50914':safeFuelPct<=15?'linear-gradient(90deg,#b91c1c,#ef4444)':safeFuelPct<=30?'linear-gradient(90deg,#d97706,#f59e0b)':safeFuelPct>=75?'linear-gradient(90deg,#15803d,#22c55e)':'linear-gradient(90deg,#e50914,#ff3340)';
+    fuelBar.style.boxShadow='0 0 8px '+fuelColor+'66';
+    const fuelPctEl=$('telemetryFuelPct');
+    if(fuelPctEl) fuelPctEl.style.color=fuelColor;
+  }
   $('centerOdo').textContent=t.odometerKm==null?'—':Number(t.odometerKm).toLocaleString(undefined,{minimumFractionDigits:3,maximumFractionDigits:3});
   const gear=t.gear==null?'D':(Number(t.gear)===0?'N':(Number(t.gear)<0?'R':String(Math.round(Number(t.gear)))));
   $('centerGear').textContent=gear;

@@ -61,6 +61,28 @@ function normalize(data, sdkJobActive = false, sdkJobEvent = '', sdkJobEventAt =
   const speedMs = numberOrNull(d.speed);
   const fuel = numberOrNull(d.fuel);
   const odometer = numberOrNull(d.truckOdometer);
+  const bool = (...keys) => {
+    for (const key of keys) {
+      const v = d?.[key];
+      if (v === true) return true;
+      if (v === false || v == null || v === '') continue;
+      const n = Number(v);
+      if (Number.isFinite(n)) return n !== 0;
+      if (['true','on','active','yes'].includes(String(v).trim().toLowerCase())) return true;
+    }
+    return false;
+  };
+  // ETS2/ATS SCS telemetry channel names as exposed by the bridge.
+  const indicators = {
+    left: bool('truck.light.lblinker','truck.blinkerLeftOn','truck.blinkerLeftActive'),
+    right: bool('truck.light.rblinker','truck.blinkerRightOn','truck.blinkerRightActive'),
+    hazard: bool('truck.hazard.warning','truck.hazardWarningLights'),
+    parking: bool('truck.light.parking','truck.lightsParkingOn'),
+    lowBeam: bool('truck.light.beam.low','truck.lightsBeamLowOn'),
+    highBeam: bool('truck.light.beam.high','truck.lightsBeamHighOn'),
+    brake: bool('truck.light.brake','truck.lightsBrakeOn'),
+    beacon: bool('truck.light.beacon','truck.lightsBeaconOn')
+  };
 
   return {
     game: gameName,
@@ -69,7 +91,9 @@ function normalize(data, sdkJobActive = false, sdkJobEvent = '', sdkJobEventAt =
     speedKmh: speedMs === null ? null : speedMs * 3.6,
     odometerKm: odometer,
     fuelLiters: fuel,
+    fuelCapacityLiters: numberOrNull(d.fuelCapacity),
     fuelPct: numberOrNull(d.fuelCapacity) && fuel !== null ? (fuel / Number(d.fuelCapacity)) * 100 : null,
+    indicators,
     gear: d.gearDashboard ?? d.gear ?? null,
     rpm: numberOrNull(d.engineRpm),
     origin,
