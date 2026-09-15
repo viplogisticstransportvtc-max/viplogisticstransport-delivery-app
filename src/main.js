@@ -30,7 +30,7 @@ function sendUpdateState(extra={}) {
 function setupAutoUpdater(){
   if(!app.isPackaged) return;
   autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.allowDowngrade = false;
   autoUpdater.on('checking-for-update',()=>sendUpdateState({status:'checking',error:null}));
   autoUpdater.on('update-available',info=>sendUpdateState({status:'available',version:info.version,error:null,downloaded:false}));
@@ -61,7 +61,7 @@ function scheduleAutomaticUpdateInstall(){
     isQuitting=true;
     sendUpdateState({status:'installing',error:null});
     try {
-      autoUpdater.quitAndInstall(false,true);
+      autoUpdater.quitAndInstall(true,true);
     } catch(e) {
       updateInstalling=false;
       isQuitting=false;
@@ -72,7 +72,7 @@ function scheduleAutomaticUpdateInstall(){
 ipcMain.handle('vip-update:get-state',()=>({...updateState, currentVersion:app.getVersion()}));
 ipcMain.handle('vip-update:check',()=>checkForUpdates());
 ipcMain.handle('vip-update:install',()=>{
-  if(updateState.downloaded){ isQuitting=true; autoUpdater.quitAndInstall(false,true); return true; }
+  if(updateState.downloaded){ isQuitting=true; autoUpdater.quitAndInstall(true,true); return true; }
   return false;
 });
 

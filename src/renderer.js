@@ -21,7 +21,7 @@ function renderUpdateState(u){
     banner.classList.remove('hidden'); title.textContent=`DOWNLOADING UPDATE · v${version}`; text.textContent=`Update download ${Number(u.progress||0)}% complete.`; if(install){install.disabled=true;install.textContent=`${Number(u.progress||0)}%`;}
   }else if(u.status==='downloaded'){
     banner.classList.remove('hidden'); title.textContent=`UPDATE READY · v${version}`;
-    text.textContent='Update downloaded. The app will restart and install it automatically. Your current delivery will remain active.';
+    text.textContent='Update downloaded. The app will restart and install the update automatically. Your current delivery will remain active.';
     if(install){install.disabled=true;install.textContent='INSTALLING…';}
   }else if(u.status==='installing'){
     banner.classList.remove('hidden'); title.textContent=`INSTALLING UPDATE · v${version}`; text.textContent='Restarting the app automatically. Your current delivery is being preserved.'; if(install){install.disabled=true;install.textContent='RESTARTING…';}
