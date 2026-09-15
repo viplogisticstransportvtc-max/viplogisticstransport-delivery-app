@@ -1,6 +1,6 @@
 {
   "name": "vip-delivery-client",
-  "version": "0.5.42",
+  "version": "0.5.43",
   "private": true,
   "description": "V.I.P Logistics Transport VTC driver delivery app with secure driver registration/login, ETS2 and ATS telemetry through TruckTel, fully automatic delivery start/completion, Windows startup launch hidden to the system tray, and automatic TruckTel installation for detected ETS2/ATS Steam libraries.",
   "main": "src/main.js",
@@ -30,14 +30,15 @@
       "icon": "assets/vip-logistics.ico"
     },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
+      "oneClick": true,
       "include": "build/installer.nsh",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "V.I.P LOGISTICS TRANSPORT DELIVERY APP",
       "installerIcon": "assets/vip-logistics.ico",
-      "uninstallerIcon": "assets/vip-logistics.ico"
+      "uninstallerIcon": "assets/vip-logistics.ico",
+      "perMachine": false,
+      "runAfterFinish": true
     },
     "publish": {
       "provider": "github",
