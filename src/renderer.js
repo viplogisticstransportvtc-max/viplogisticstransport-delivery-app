@@ -16,23 +16,23 @@ function renderUpdateState(u){
   if(updateUi.hidden && u.status!=='downloaded') { banner.classList.add('hidden'); return; }
   const version=u.version||'new';
   if(u.status==='available'){
-    banner.classList.remove('hidden'); title.textContent=`UPDATE AVAILABLE · v${version}`; text.textContent='The new version is downloading automatically in the background.'; install.disabled=true; install.textContent='DOWNLOADING…';
+    banner.classList.remove('hidden'); title.textContent=`UPDATE AVAILABLE · v${version}`; text.textContent='The new version is downloading automatically in the background.'; if(install){install.disabled=true;install.textContent='DOWNLOADING…';}
   }else if(u.status==='downloading'){
-    banner.classList.remove('hidden'); title.textContent=`DOWNLOADING UPDATE · v${version}`; text.textContent=`Update download ${Number(u.progress||0)}% complete.`; install.disabled=true; install.textContent=`${Number(u.progress||0)}%`;
+    banner.classList.remove('hidden'); title.textContent=`DOWNLOADING UPDATE · v${version}`; text.textContent=`Update download ${Number(u.progress||0)}% complete.`; if(install){install.disabled=true;install.textContent=`${Number(u.progress||0)}%`;}
   }else if(u.status==='downloaded'){
     banner.classList.remove('hidden'); title.textContent=`UPDATE READY · v${version}`;
-    const active=Boolean(state.active); text.textContent=active?'Update downloaded. Finish your current delivery before restarting the app.':'Update downloaded and ready to install.';
-    install.disabled=active; install.textContent=active?'FINISH DELIVERY':'RESTART & UPDATE';
+    text.textContent='Update downloaded. The app will restart and install it automatically. Your current delivery will remain active.';
+    if(install){install.disabled=true;install.textContent='INSTALLING…';}
+  }else if(u.status==='installing'){
+    banner.classList.remove('hidden'); title.textContent=`INSTALLING UPDATE · v${version}`; text.textContent='Restarting the app automatically. Your current delivery is being preserved.'; if(install){install.disabled=true;install.textContent='RESTARTING…';}
   }else if(u.status==='error'){
-    banner.classList.remove('hidden'); title.textContent='UPDATE CHECK FAILED'; text.textContent='The app will try again automatically later.'; install.disabled=true; install.textContent='UPDATE';
+    banner.classList.remove('hidden'); title.textContent='UPDATE CHECK FAILED'; text.textContent='The app will try again automatically later.'; if(install){install.disabled=true;install.textContent='UPDATE';}
   }else{ banner.classList.add('hidden'); }
 }
 if(window.vipClient?.updates){
   window.vipClient.updates.onState(renderUpdateState);
   window.vipClient.updates.getState().then(renderUpdateState).catch(()=>{});
 }
-$('updateLater')?.addEventListener('click',()=>{updateUi.hidden=true;$('updateBanner')?.classList.add('hidden');});
-$('updateInstall')?.addEventListener('click',async()=>{try{await window.vipClient.updates.install();}catch(e){message(e.message||'Unable to install update.','error');}});
 
 const state = { base: VTC_API_BASE, username:'', token:'', active:null, paused:[], lastJobActive:false, lastJobFinished:false, lastJobSignature:'', lastJobEventAt:0, startingJob:false, switchingJob:false, autoStartKey:'', completing:false, lastCancelAt:0, lastCompletedEventAt:0, pendingCompletion:null, completionRetryTimer:null, restCompletionTimer:null, lastRestJobSeenAt:0 };
 

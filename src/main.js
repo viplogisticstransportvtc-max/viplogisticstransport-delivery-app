@@ -10,6 +10,8 @@ let telemetryServer, telemetryAdapter, tray;
 let isQuitting = false;
 let mainWindow = null;
 let updateState = { status:'idle', version:null, downloaded:false, error:null };
+let updateInstalling = false;
+let updateInstallTimer = null;
 
 const authFile = () => path.join(app.getPath('userData'), 'driver-session.bin');
 function readToken(){try{if(!safeStorage.isEncryptionAvailable()||!fs.existsSync(authFile()))return '';return safeStorage.decryptString(fs.readFileSync(authFile()));}catch{return '';}}
@@ -34,15 +36,38 @@ function setupAutoUpdater(){
   autoUpdater.on('update-available',info=>sendUpdateState({status:'available',version:info.version,error:null,downloaded:false}));
   autoUpdater.on('update-not-available',info=>sendUpdateState({status:'current',version:info.version||app.getVersion(),error:null,downloaded:false}));
   autoUpdater.on('download-progress',p=>sendUpdateState({status:'downloading',version:updateState.version,progress:Math.round(p.percent||0),error:null}));
-  autoUpdater.on('update-downloaded',info=>sendUpdateState({status:'downloaded',version:info.version,progress:100,downloaded:true,error:null}));
+  autoUpdater.on('update-downloaded',info=>{
+    sendUpdateState({status:'downloaded',version:info.version,progress:100,downloaded:true,error:null});
+    scheduleAutomaticUpdateInstall();
+  });
   autoUpdater.on('error',err=>sendUpdateState({status:'error',error:String(err?.message||err)}));
-  setTimeout(()=>checkForUpdates(),5000);
+  // Check shortly after startup so an available release is handled automatically
+  // as soon as the driver opens the app. Delivery state is stored on the backend,
+  // so restarting the client does not complete or cancel the current delivery.
+  setTimeout(()=>checkForUpdates(),1500);
   setInterval(()=>checkForUpdates(),30*60*1000);
 }
 async function checkForUpdates(){
   if(!app.isPackaged) return {status:'dev'};
   try { return await autoUpdater.checkForUpdates(); }
   catch(e){ sendUpdateState({status:'error',error:String(e?.message||e)}); return null; }
+}
+function scheduleAutomaticUpdateInstall(){
+  if(updateInstalling || !app.isPackaged) return;
+  clearTimeout(updateInstallTimer);
+  updateInstallTimer=setTimeout(()=>{
+    if(updateInstalling || !updateState.downloaded) return;
+    updateInstalling=true;
+    isQuitting=true;
+    sendUpdateState({status:'installing',error:null});
+    try {
+      autoUpdater.quitAndInstall(false,true);
+    } catch(e) {
+      updateInstalling=false;
+      isQuitting=false;
+      sendUpdateState({status:'error',error:String(e?.message||e)});
+    }
+  },1500);
 }
 ipcMain.handle('vip-update:get-state',()=>({...updateState, currentVersion:app.getVersion()}));
 ipcMain.handle('vip-update:check',()=>checkForUpdates());
